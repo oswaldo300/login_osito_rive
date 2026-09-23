@@ -53,10 +53,11 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
 
-  # The following line ensures that the Material Icons font is
-  # included with your application, so that you can use the icons in
-  # the material Icons class.
   uses-material-design: true
+
+  # Registro obligatorio del archivo de animación
+  assets:
+    - assets/login-bear.riv
 
   # To add assets to your application, add an assets section, like this:
   # assets:

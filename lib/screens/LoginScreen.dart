@@ -21,21 +21,40 @@ class _LoginScreenState extends State<LoginScreen> {
   SMITrigger? _trigSuccess;
   SMITrigger? _trigFail;
 
-  /// Función auxiliar para bajar las manos del osito
-  void _lowerHands() {
-    if (_isHandsUp != null) {
-      _isHandsUp!.change(false);
-    }
-  }
+  // 2.1 crear las variables para FocusNode
+  final _emailFocus = FocusNode();
+  final _passwordFocus = FocusNode();
 
-  /// Función auxiliar para subir las manos del osito
-  void _raiseHands() {
-    if (_isChecking != null) {
-      _isChecking!.change(false);
-    }
-    if (_isHandsUp != null) {
-      _isHandsUp!.change(true);
-    }
+  // 2.2 Listeners (oyentes/chismosos)
+  @override
+  void initState() {
+    super.initState();
+    
+    _emailFocus.addListener(() {
+      if (_emailFocus.hasFocus) {
+        if (_isHandsUp != null) {
+          _isHandsUp?.change(false);
+        }
+        if (_isChecking != null) {
+          _isChecking?.change(true);
+        }
+      } else {
+         if (_isChecking != null) {
+          _isChecking?.change(false);
+        }
+      }
+    });
+
+    _passwordFocus.addListener(() {
+      if (_passwordFocus.hasFocus) {
+        if (_isChecking != null) {
+          _isChecking?.change(false);
+        }
+        if (_isHandsUp != null) {
+          _isHandsUp?.change(true);
+        }
+      }
+    });
   }
 
   @override
@@ -52,7 +71,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 width: size.width,
                 height: 200,
                 child: RiveAnimation.asset(
-                  'login-bear.riv',
+                  'assets/login-bear.riv', // <--- Ruta con la carpeta assets/ corregida
+                  fit: BoxFit.contain,     // <--- Asegura el escalado en pantalla
                   stateMachines: const ['Login Machine'],
                   onInit: (artboard) {
                     _controller = StateMachineController.fromArtboard(
@@ -75,14 +95,8 @@ class _LoginScreenState extends State<LoginScreen> {
               
               // Campo de texto para Email
               TextField(
+                focusNode: _emailFocus,
                 keyboardType: TextInputType.emailAddress,
-                onTap: () {
-                  // Al hacer tap en el Email, bajamos las manos y activamos la mirada
-                  _lowerHands();
-                  if (_isChecking != null) {
-                    _isChecking!.change(true);
-                  }
-                },
                 decoration: InputDecoration(
                   hintText: 'Email',
                   prefixIcon: const Icon(Icons.email),
@@ -95,13 +109,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
               // Campo de texto para Contraseña
               TextField(
-                onTap: () {
-                  // Al enfocar la contraseña, el osito se tapa los ojos inmediatamente
-                  _raiseHands();
-                },
+                // 2.3 Asignar foco al campo de texto
+                focusNode: _passwordFocus,
                 onChanged: (value) {
-                  // Reforzamos la postura por si sigue escribiendo
-                  _raiseHands();
+                  if (_isChecking != null) {
+                    _isChecking!.change(false);
+                  }
+                  if (_isHandsUp == null) return;
+                  _isHandsUp!.change(true);
                 },
                 obscureText: _obscure,
                 decoration: InputDecoration(
@@ -115,13 +130,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       setState(() {
                         _obscure = !_obscure;
                       });
-                      
-                      // Opcional: Si el usuario desoculta la contraseña, ¿quieres que se destape los ojos?
-                      // Si obscure es false (visible), bajamos manos; si es true (oculta), se las tapa.
+                      // Sincronizar las manos con el ojo
                       if (_obscure) {
-                        _raiseHands();
+                        _isHandsUp?.change(true);
                       } else {
-                        _lowerHands();
+                        _isHandsUp?.change(false);
                       }
                     },
                   ),
@@ -135,5 +148,14 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    // 2.4 liberar espacio en memoria
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
+    _controller?.dispose();
+    super.dispose();
   }
 }
