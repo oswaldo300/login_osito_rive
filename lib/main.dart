@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:rive/rive.dart';
 import 'firebase_options.dart';
 import 'screens/LoginScreen.dart';
 
@@ -9,8 +10,9 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  await RiveFile.initialize();
 
-  debugPrint('✅ Firebase inicializado correctamente');
+  debugPrint('✅ Firebase y Rive inicializados correctamente');
 
   runApp(const MyApp());
 }
@@ -30,5 +32,4 @@ class MyApp extends StatelessWidget {
       home: const LoginScreen(),
     );
   }
-  
 }
