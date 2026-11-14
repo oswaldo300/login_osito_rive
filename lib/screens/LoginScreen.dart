@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:rive/rive.dart';
-import 'dart:async';
+import '../main.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -10,92 +11,24 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  bool _obscure = true;
-  bool _rememberMe = false;
-  bool _isLoading = false;
-
-  StateMachineController? _controller;
-
-  SMIBool? _isChecking;
-  SMIBool? _isHandsUp;
-  SMITrigger? _trigSuccess;
-  SMITrigger? _trigFail;
-  SMINumber? _numLook;
-
-  Timer? _typingDebounce;
-
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _emailFocus = FocusNode();
   final _passwordFocus = FocusNode();
 
-  final _emailCtrl = TextEditingController();
-  final _passCtrl = TextEditingController();
+  SMIBool? _isChecking;
+  SMIBool? _isHandsUp;
+  SMINumber? _numLook;
+  SMITrigger? _trigSuccess;
+  SMITrigger? _trigFail;
 
-  String? _emailError;
-  String? _passError;
-
-  bool isValidEmail(String email) {
-    final re = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
-    return re.hasMatch(email);
-  }
-
-  bool isValidPassword(String pass) {
-    final re = RegExp(
-      r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$',
-    );
-    return re.hasMatch(pass);
-  }
-
-  void _onLogin() {
-    if (_isLoading) return;
-
-    final email = _emailCtrl.text.trim();
-    final pass = _passCtrl.text;
-
-    final eError = isValidEmail(email) ? null : "Invalid Email";
-    final pError = isValidPassword(pass) ? null : "Invalid Password";
-
-    // 1. Quitar el foco de los campos
-    FocusScope.of(context).unfocus();
-    _typingDebounce?.cancel();
-
-    // 2. Preparar al oso en reposo inmediatamente
-    _isChecking?.change(false);
-    _isHandsUp?.change(false);
-    _numLook?.value = 50.0;
-
-    // 3. Disparar los triggers de Rive al instante
-    if (eError == null && pError == null) {
-      _trigSuccess?.fire();
-    } else {
-      _trigFail?.fire();
-    }
-
-    // 4. Actualizar errores y activar el bloqueo Anti-Spam en el siguiente frame
-    // (Esto evita que el cambio de estado de Flutter cancele el gesto de toque)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      setState(() {
-        _emailError = eError;
-        _passError = pError;
-        _isLoading = true;
-      });
-    });
-
-    // 5. Desbloquear la interfaz al terminar la animación (2.5 segundos)
-    Timer(const Duration(milliseconds: 2500), () {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    });
-  }
+  bool _obscurePassword = true;
+  bool _rememberMe = false;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-
-    // Manejo correcto de focos para las manos y mirada del oso
     _emailFocus.addListener(() {
       if (_emailFocus.hasFocus) {
         _isHandsUp?.change(false);
@@ -108,207 +41,236 @@ class _LoginScreenState extends State<LoginScreen> {
     _passwordFocus.addListener(() {
       if (_passwordFocus.hasFocus) {
         _isChecking?.change(false);
-        _isHandsUp?.change(_obscure);
+        _isHandsUp?.change(_obscurePassword);
       } else {
         _isHandsUp?.change(false);
       }
     });
   }
 
+  void _onRiveInit(Artboard artboard) {
+    final machineName = artboard.stateMachines.isNotEmpty
+        ? artboard.stateMachines.first.name
+        : 'Login Machine';
+    final controller = StateMachineController.fromArtboard(artboard, machineName);
+    if (controller != null) {
+      artboard.addController(controller);
+      _isChecking = controller.findInput<bool>('isChecking') as SMIBool?;
+      _isHandsUp = controller.findInput<bool>('isHandsUp') as SMIBool?;
+      _numLook = controller.findInput<double>('numLook') as SMINumber?;
+      _trigSuccess = controller.findInput<bool>('trigSuccess') as SMITrigger?;
+      _trigFail = controller.findInput<bool>('trigFail') as SMITrigger?;
+    }
+  }
+
+  Future<void> _signIn() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    FocusScope.of(context).unfocus();
+    _isChecking?.change(false);
+    _isHandsUp?.change(false);
+
+    if (email.isEmpty || password.isEmpty) {
+      _trigFail?.fire();
+      _showMessage('Ingresa tu correo y contraseña', isError: true);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    isPlayingLoginSuccess.value = true;
+
+    try {
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      _trigSuccess?.fire();
+      _showMessage('¡Bienvenido! Iniciando sesión...', isError: false);
+
+      await Future.delayed(const Duration(milliseconds: 1600));
+      isPlayingLoginSuccess.value = false;
+    } on FirebaseAuthException catch (e) {
+      isPlayingLoginSuccess.value = false;
+      _trigFail?.fire();
+      _showMessage(_mapAuthError(e.code), isError: true);
+    } catch (_) {
+      isPlayingLoginSuccess.value = false;
+      _trigFail?.fire();
+      _showMessage('Ocurrió un error inesperado al conectar', isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  String _mapAuthError(String code) {
+    switch (code) {
+      case 'invalid-email':
+        return 'El formato del correo no es válido';
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Correo o contraseña incorrectos';
+      case 'too-many-requests':
+        return 'Demasiados intentos. Espera un momento';
+      default:
+        return 'Error de autenticación ($code)';
+    }
+  }
+
+  void _showMessage(String text, {required bool isError}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(text),
+        backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
+      ),
+    );
+  }
+
   @override
   void dispose() {
-    _emailCtrl.dispose();
-    _passCtrl.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     _emailFocus.dispose();
     _passwordFocus.dispose();
-    _typingDebounce?.cancel();
-    _controller?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final Size size = MediaQuery.of(context).size;
+    final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => FocusScope.of(context).unfocus(),
+      backgroundColor: Colors.white,
+      body: SafeArea(
         child: SingleChildScrollView(
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: Column(
+            children: [
+              SizedBox(
+                height: size.height * 0.30,
+                child: RiveAnimation.asset(
+                  'assets/login-bear.riv',
+                  fit: BoxFit.contain,
+                  onInit: _onRiveInit,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _emailController,
+                focusNode: _emailFocus,
+                enabled: !_isLoading,
+                keyboardType: TextInputType.emailAddress,
+                onChanged: (value) {
+                  _numLook?.change((value.length * 2.0).clamp(0, 100));
+                },
+                decoration: InputDecoration(
+                  hintText: 'Email',
+                  prefixIcon: const Icon(Icons.email),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _passwordController,
+                focusNode: _passwordFocus,
+                enabled: !_isLoading,
+                obscureText: _obscurePassword,
+                decoration: InputDecoration(
+                  hintText: 'Password',
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _obscurePassword = !_obscurePassword;
+                        if (_passwordFocus.hasFocus) {
+                          _isHandsUp?.change(_obscurePassword);
+                        }
+                      });
+                    },
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  SizedBox(
-                    width: size.width,
-                    height: 200,
-                    child: RiveAnimation.asset(
-                      'assets/login-bear.riv',
-                      stateMachines: const ['Login Machine'],
-                      onInit: (artboard) {
-                        _controller = StateMachineController.fromArtboard(
-                          artboard,
-                          'Login Machine',
-                        );
-
-                        if (_controller == null) return;
-
-                        artboard.addController(_controller!);
-
-                        _isChecking = _controller!.findSMI('isChecking');
-                        _isHandsUp = _controller!.findSMI('isHandsUp');
-                        _trigSuccess = _controller!.findSMI('trigSuccess');
-                        _trigFail = _controller!.findSMI('trigFail');
-                        _numLook = _controller!.findSMI('numLook');
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _emailCtrl,
-                    focusNode: _emailFocus,
-                    keyboardType: TextInputType.emailAddress,
-                    enabled: !_isLoading,
-                    onChanged: (value) {
-                      if (_isChecking != null) {
-                        _isChecking!.change(true);
-                        final look =
-                            (value.length / 80.0 * 100.0).clamp(0.0, 100.0);
-                        _numLook?.value = look;
-                        _typingDebounce?.cancel();
-                        _typingDebounce = Timer(const Duration(seconds: 3), () {
-                          if (!mounted) return;
-                          _isChecking?.change(false);
-                        });
-                      }
-
-                      if (_isHandsUp != null) {
-                        _isHandsUp!.change(false);
-                      }
-                    },
-                    decoration: InputDecoration(
-                      errorText: _emailError,
-                      hintText: 'Email',
-                      prefixIcon: const Icon(Icons.email),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _passCtrl,
-                    focusNode: _passwordFocus,
-                    obscureText: _obscure,
-                    enabled: !_isLoading,
-                    onChanged: (value) {
-                      if (_isHandsUp != null) {
-                        _isHandsUp!.change(_obscure);
-                      }
-
-                      if (_isChecking != null) {
-                        _isChecking!.change(false);
-                      }
-                    },
-                    decoration: InputDecoration(
-                      errorText: _passError,
-                      hintText: 'Password',
-                      prefixIcon: const Icon(Icons.lock),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscure ? Icons.visibility : Icons.visibility_off,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _obscure = !_obscure;
-                            if (_passwordFocus.hasFocus && _isHandsUp != null) {
-                              _isHandsUp!.change(_obscure);
-                            }
-                          });
-                        },
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Checkbox(
-                            value: _rememberMe,
-                            activeColor: Colors.deepPurple,
-                            onChanged: _isLoading
-                                ? null
-                                : (value) {
-                                    setState(() {
-                                      _rememberMe = value ?? false;
-                                    });
-                                  },
-                          ),
-                          const Text('Remember me'),
-                        ],
+                      Checkbox(
+                        value: _rememberMe,
+                        onChanged: _isLoading
+                            ? null
+                            : (val) => setState(() => _rememberMe = val ?? false),
                       ),
-                      const Text(
-                        'Forgot password?',
-                        style: TextStyle(
-                          decoration: TextDecoration.underline,
-                        ),
-                      ),
+                      const Text('Remember me'),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  MaterialButton(
-                    minWidth: size.width,
-                    height: 50,
-                    color: Colors.deepPurple,
-                    disabledColor: Colors.deepPurple.shade200,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  TextButton(
+                    onPressed: _isLoading ? null : () {},
+                    child: const Text(
+                      'Forgot password?',
+                      style: TextStyle(decoration: TextDecoration.underline),
                     ),
-                    onPressed: _isLoading ? null : _onLogin,
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Text(
-                            'Login',
-                            style: TextStyle(color: Colors.white),
-                          ),
                   ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: size.width,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text("Don't have an account?"),
-                        TextButton(
-                          onPressed: _isLoading ? null : () {},
-                          child: const Text(
-                            'Sign Up',
-                            style: TextStyle(
-                              color: Colors.black,
-                              decoration: TextDecoration.underline,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        )
-                      ],
-                    ),
-                  )
                 ],
               ),
-            ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                  ),
+                  onPressed: _isLoading ? null : _signIn,
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : const Text(
+                          'Login',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text("Don't have an account?"),
+                  TextButton(
+                    onPressed: _isLoading ? null : () {},
+                    child: const Text(
+                      'Sign Up',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
