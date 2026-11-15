@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:rive/rive.dart';
 import '../main.dart';
+import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -262,7 +263,15 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   const Text("Don't have an account?"),
                   TextButton(
-                    onPressed: _isLoading ? null : () {},
+                    onPressed: _isLoading
+                        ? null
+                        : () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const RegisterScreen(),
+                              ),
+                            );
+                          },
                     child: const Text(
                       'Sign Up',
                       style: TextStyle(fontWeight: FontWeight.bold),
