@@ -107,6 +107,97 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _showForgotPasswordDialog() async {
+    final resetController = TextEditingController(
+      text: _emailController.text.trim(),
+    );
+
+    FocusScope.of(context).unfocus();
+    _isChecking?.change(false);
+    _isHandsUp?.change(false);
+
+    final emailToReset = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Recuperar contraseña'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Ingresa tu correo y te enviaremos un enlace para restablecer tu contraseña.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: resetController,
+                keyboardType: TextInputType.emailAddress,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Email',
+                  prefixIcon: const Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(resetController.text.trim());
+              },
+              child: const Text('Enviar enlace'),
+            ),
+          ],
+        );
+      },
+    );
+
+    resetController.dispose();
+
+    if (emailToReset == null || !mounted) return;
+
+    final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+    if (emailToReset.isEmpty || !emailRegex.hasMatch(emailToReset)) {
+      _trigFail?.fire();
+      _showMessage('Ingresa un correo electrónico válido', isError: true);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: emailToReset);
+      _trigSuccess?.fire();
+      _showMessage(
+        'Correo de recuperación enviado a $emailToReset. Revisa tu bandeja o spam.',
+        isError: false,
+      );
+    } on FirebaseAuthException catch (e) {
+      _trigFail?.fire();
+      _showMessage(_mapAuthError(e.code), isError: true);
+    } catch (_) {
+      _trigFail?.fire();
+      _showMessage('No se pudo enviar el correo de recuperación', isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   String _mapAuthError(String code) {
     switch (code) {
       case 'invalid-email':
@@ -221,7 +312,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                   TextButton(
-                    onPressed: _isLoading ? null : () {},
+                    onPressed: _isLoading ? null : _showForgotPasswordDialog,
                     child: const Text(
                       'Forgot password?',
                       style: TextStyle(decoration: TextDecoration.underline),
