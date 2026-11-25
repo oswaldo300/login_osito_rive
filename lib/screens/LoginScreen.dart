@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:rive/rive.dart';
+
 import '../main.dart';
+import '../utils/validators.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -26,6 +28,10 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _rememberMe = false;
   bool _isLoading = false;
+
+  // 4.2 Errores de formato para mostrarlos en la UI
+  String? emailError;
+  String? passError;
 
   @override
   void initState() {
@@ -53,7 +59,10 @@ class _LoginScreenState extends State<LoginScreen> {
     final machineName = artboard.stateMachines.isNotEmpty
         ? artboard.stateMachines.first.name
         : 'Login Machine';
-    final controller = StateMachineController.fromArtboard(artboard, machineName);
+    final controller = StateMachineController.fromArtboard(
+      artboard,
+      machineName,
+    );
     if (controller != null) {
       artboard.addController(controller);
       _isChecking = controller.findInput<bool>('isChecking') as SMIBool?;
@@ -64,35 +73,64 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // 4.4 Dar acción al botón
+  // 5.3 Convertir _signIn en asíncrono (Future<void> ... async)
   Future<void> _signIn() async {
+    // 4.5 De lo que escribió el usuario, quitar espacios en blanco
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
+    // 4.6 Evaluar los errores de formato
+    final eError = isValidEmail(email)
+        ? null
+        : 'Ingresa un correo electrónico válido';
+    final pError = isValidPassword(password)
+        ? null
+        : 'Mínimo 8 caracteres, una mayúscula, una minúscula, un número y un carácter especial';
+
+    // 4.7 Avisar que hubo cambios
+    setState(() {
+      emailError = eError;
+      passError = pError;
+    });
+
+    // 4.8 Cerrar el teclado y bajar las manos
     FocusScope.of(context).unfocus();
     _isChecking?.change(false);
     _isHandsUp?.change(false);
+    _numLook?.change(50.0);
 
-    if (email.isEmpty || password.isEmpty) {
+    // 4.9 Si algún campo tiene formato inválido, activar fallo y detener aquí
+    if (eError != null || pError != null) {
       _trigFail?.fire();
-      _showMessage('Ingresa tu correo y contraseña', isError: true);
       return;
     }
 
+    // 5.4 Activar el CircularProgressIndicator
     setState(() => _isLoading = true);
     isPlayingLoginSuccess.value = true;
 
     try {
+      // 5.5 Autenticar usuario en Firebase (esperamos un par de segundos
+      // para ver el loading)
+      await Future.delayed(const Duration(seconds: 2));
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
+      // 5.6 Apagar loading, disparar éxito del osito y esperar a que
+      // termine su animación
       _trigSuccess?.fire();
       _showMessage('¡Bienvenido! Iniciando sesión...', isError: false);
 
       await Future.delayed(const Duration(milliseconds: 1600));
       isPlayingLoginSuccess.value = false;
     } on FirebaseAuthException catch (e) {
+      // 5.8 Si Firebase rechaza el login, apagar loading y mostrar el
+      // error genérico (sin marcar ningún campo en específico, como pide
+      // la tarea: credenciales incorrectas, no se sabe si fue el correo
+      // o la contraseña).
       isPlayingLoginSuccess.value = false;
       _trigFail?.fire();
       _showMessage(_mapAuthError(e.code), isError: true);
@@ -190,7 +228,10 @@ class _LoginScreenState extends State<LoginScreen> {
       _showMessage(_mapAuthError(e.code), isError: true);
     } catch (_) {
       _trigFail?.fire();
-      _showMessage('No se pudo enviar el correo de recuperación', isError: true);
+      _showMessage(
+        'No se pudo enviar el correo de recuperación',
+        isError: true,
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -264,6 +305,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 decoration: InputDecoration(
                   hintText: 'Email',
                   prefixIcon: const Icon(Icons.email),
+                  errorText: emailError,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -278,9 +320,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 decoration: InputDecoration(
                   hintText: 'Password',
                   prefixIcon: const Icon(Icons.lock),
+                  errorText: passError,
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                      _obscurePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility,
                     ),
                     onPressed: () {
                       setState(() {
@@ -306,7 +351,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         value: _rememberMe,
                         onChanged: _isLoading
                             ? null
-                            : (val) => setState(() => _rememberMe = val ?? false),
+                            : (val) =>
+                                  setState(() => _rememberMe = val ?? false),
                       ),
                       const Text('Remember me'),
                     ],
@@ -344,7 +390,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         )
                       : const Text(
                           'Login',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                 ),
               ),
