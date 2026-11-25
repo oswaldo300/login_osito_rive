@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 /// Cliente HTTP para la API de Spring Boot (market-backend-v2).
@@ -14,15 +13,18 @@ import 'package:http/http.dart' as http;
 /// CLI-001); no es el usuario de Firebase, son dos logins distintos.
 class ApiService {
   // 6.1 Parámetro clave: URL base de la API de Spring Boot (puerto 8080).
+  // Activa UNA línea según dónde pruebes la app (las demás quedan
+  // comentadas):
   // - Web / Chrome: la app corre en la misma computadora que Spring Boot,
   //   así que localhost sí apunta a tu PC.
   // - Emulador Android: para él, localhost es el propio emulador, no tu
   //   PC. 10.0.2.2 es la dirección especial que apunta a tu computadora.
-  // - Celular físico: usa la IP local de tu computadora
-  //   (ej. http://192.168.1.X:8080).
-  static const String baseUrl = kIsWeb
-      ? 'http://localhost:8080'
-      : 'http://10.0.2.2:8080';
+  // - Celular físico: usa la IP local de tu computadora en tu red Wi-Fi
+  //   (en Windows: corre `ipconfig` y busca "Dirección IPv4").
+  //   El celular y la PC tienen que estar en la misma red Wi-Fi.
+  // static const String baseUrl = 'http://localhost:8080'; // Web / Chrome
+  // static const String baseUrl = 'http://10.0.2.2:8080'; // Emulador Android
+  static const String baseUrl = 'http://192.168.1.X:8080'; // Celular físico
 
   // Credenciales demo de la API (ver ADA 12: POST /auth/login recibe
   // {clientId, password} y devuelve el JWT).
